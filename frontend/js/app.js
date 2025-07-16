@@ -382,31 +382,74 @@ async function handleSaveSettings(e) {
     
     const newName = document.getElementById('settingsProjectName').value;
     const newDescription = document.getElementById('settingsProjectDescription').value;
-    const newPort = parseInt(document.getElementById('settingsProjectPort').value);
-    
-    try {
-        // Port değişikliği varsa
-        const currentProject = projects.find(p => p.id == projectId);
-        if (currentProject && currentProject.external_port !== newPort) {
-            await editPort(projectId);
+    const newPortRaw = document.getElementById('settingsProjectPort').value;
+    const newPort = newPortRaw ? parseInt(newPortRaw) : null;
+
+    const currentProject = projects.find(p => p.id == projectId);
+    if (!currentProject) {
+        showToast('Proje bulunamadı.', 'error');
+        return;
+    }
+
+    let settingsUpdated = false;
+
+    // Port güncelleme mantığı
+    const oldPort = currentProject.external_port;
+    if (newPort !== oldPort) {
+        if (projectStatus === 'running') {
+            showToast('Portu değiştirmek için lütfen önce projeyi durdurun.', 'error');
+            return;
+        }
+
+        if (newPort !== null && (isNaN(newPort) || newPort < 1024 || newPort > 65535)) {
+            showToast('Geçersiz port numarası. Port 1024-65535 arasında olmalıdır.', 'error');
+            return;
         }
         
-        // Proje bilgilerini güncelle (name, description)
-        await apiRequest(`/api/projects/${projectId}`, {
-            method: 'PUT',
-            body: JSON.stringify({
-                name: newName,
-                description: newDescription
-            })
-        });
-        
+        try {
+            const portData = await apiRequest(`/api/projects/${projectId}/port`, {
+                method: 'PUT',
+                body: JSON.stringify({ port: newPort })
+            });
+            
+            if (portData.success) {
+                settingsUpdated = true;
+            } else {
+                // API'den gelen hatayı göster
+                showToast(portData.error || 'Port güncellenemedi.', 'error');
+                return; // Hata varsa diğer işlemlere devam etme
+            }
+        } catch (error) {
+            console.error('Port update error:', error);
+            showToast('Port güncellenirken bir sunucu hatası oluştu.', 'error');
+            return;
+        }
+    }
+
+    // İsim ve açıklama güncelleme mantığı
+    if (newName !== currentProject.name || newDescription !== (currentProject.description || '')) {
+        try {
+            await apiRequest(`/api/projects/${projectId}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    name: newName,
+                    description: newDescription
+                })
+            });
+            settingsUpdated = true;
+        } catch (error) {
+            console.error('Project info update error:', error);
+            showToast('Proje bilgileri güncellenirken bir hata oluştu.', 'error');
+            return;
+        }
+    }
+
+    if (settingsUpdated) {
         settingsModal.hide();
-        showToast('Proje ayarları güncellendi', 'success');
+        showToast('Proje ayarları başarıyla güncellendi.', 'success');
         loadProjects();
-        
-    } catch (error) {
-        console.error('Save settings error:', error);
-        showToast('Ayarlar güncellenirken hata oluştu', 'error');
+    } else {
+        showToast('Değişiklik yapılmadı.', 'info');
     }
 }
 

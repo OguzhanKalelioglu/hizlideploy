@@ -219,6 +219,47 @@ router.post('/sync', async (req, res) => {
   }
 });
 
+// Proje portunu güncelle
+router.put('/:id/port', async (req, res) => {
+  const { id } = req.params;
+  const { port } = req.body;
+
+  if (!port || !Number.isInteger(port) || port < 1024 || port > 65535) {
+    return res.status(400).json({ error: 'Geçersiz port numarası. Port 1024-65535 arasında bir sayı olmalıdır.' });
+  }
+
+  try {
+    // Portun başka bir proje tarafından kullanılıp kullanılmadığını kontrol et
+    const allProjects = await new Promise((resolve, reject) => {
+      db.all('SELECT id, port FROM projects', (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+
+    const portInUseByOther = allProjects.some(p => p.port === port && p.id !== parseInt(id));
+
+    if (portInUseByOther) {
+      return res.status(409).json({ error: `Port ${port} zaten başka bir proje tarafından kullanılıyor.` });
+    }
+
+    // Portu veritabanında güncelle
+    db.run('UPDATE projects SET port = ?, external_port = ? WHERE id = ?', [port, port, id], function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Veritabanı hatası' });
+      }
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Proje bulunamadı' });
+      }
+      res.json({ success: true, message: `Proje portu ${port} olarak güncellendi.` });
+    });
+  } catch (error) {
+    console.error('Port güncelleme hatası:', error);
+    res.status(500).json({ error: 'Sunucu hatası' });
+  }
+});
+
+
 // Mevcut projelere port ata
 router.post('/assign-ports', async (req, res) => {
   try {
@@ -957,59 +998,6 @@ router.put('/:id', async (req, res) => {
   } catch (error) {
     console.error('Proje güncelleme hatası:', error);
     res.status(500).json({ error: 'Proje güncelleme hatası' });
-  }
-});
-
-// Port güncelleme
-router.put('/:id/port', async (req, res) => {
-  try {
-    const projectId = req.params.id;
-    const { port } = req.body;
-
-    if (!port || isNaN(port) || port < 1024 || port > 65535) {
-      return res.status(400).json({ error: 'Geçersiz port numarası. Port 1024-65535 arasında olmalıdır.' });
-    }
-
-    // Projenin durumunu kontrol et
-    db.get('SELECT * FROM projects WHERE id = ?', [projectId], async (err, project) => {
-      if (err) {
-        return res.status(500).json({ error: 'Veritabanı hatası' });
-      }
-
-      if (!project) {
-        return res.status(404).json({ error: 'Proje bulunamadı' });
-      }
-
-      if (project.status === 'running') {
-        return res.status(400).json({ error: 'Çalışan bir projenin portu değiştirilemez. Önce projeyi durdurun.' });
-      }
-
-      // Port'un başka proje tarafından kullanılıp kullanılmadığını kontrol et
-      const isPortUsed = await portManager.isPortInUse(port);
-      if (isPortUsed) {
-        return res.status(400).json({ error: `Port ${port} zaten kullanımda. Başka bir port seçin.` });
-      }
-
-      // Eski port rezervasyonunu temizle
-      await portManager.releasePort(projectId);
-
-      // Yeni port rezervasyonu yap
-      try {
-        const portInfo = await portManager.reservePort(projectId, port, port);
-        
-        res.json({
-          message: 'Port başarıyla güncellendi',
-          port: portInfo.internal_port,
-          external_port: portInfo.external_port
-        });
-      } catch (portError) {
-        console.error('Port rezervasyonu hatası:', portError);
-        res.status(500).json({ error: 'Port rezervasyonu başarısız' });
-      }
-    });
-  } catch (error) {
-    console.error('Port güncelleme hatası:', error);
-    res.status(500).json({ error: 'Port güncelleme hatası' });
   }
 });
 
