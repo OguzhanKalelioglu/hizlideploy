@@ -16,7 +16,7 @@ fi
 # Temel paketleri kur
 echo " Temel paketler kuruluyor..."
 apt-get update -y
-apt-get install -y curl wget git nginx sqlite3 software-properties-common
+apt-get install -y curl wget git nginx sqlite3 software-properties-common ufw
 
 # Node.js kur
 echo " Node.js kuruluyor..."
