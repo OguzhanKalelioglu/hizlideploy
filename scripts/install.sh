@@ -28,6 +28,18 @@ echo "⚙️ PM2 kuruluyor..."
 npm install -g npm@latest
 npm install -g pm2
 
+# PATH'i güncelle
+export PATH=$PATH:$(npm config get prefix)/bin
+source ~/.bashrc || true
+
+# PM2 komutunun mevcut olup olmadığını kontrol et
+if ! command -v pm2 &> /dev/null; then
+    echo "⚠️ PM2 PATH'te bulunamadı, tam path kullanılıyor..."
+    PM2_PATH=$(npm config get prefix)/bin/pm2
+else
+    PM2_PATH=pm2
+fi
+
 # Kurulum dizini
 INSTALL_DIR="/opt/hizlideploy"
 echo "��� Kurulum dizini: $INSTALL_DIR"
@@ -63,12 +75,12 @@ chmod -R 755 "$INSTALL_DIR"
 # PM2 başlat
 echo "🚀 PM2 servisi başlatılıyor..."
 cd "$INSTALL_DIR"
-pm2 start backend/server.js --name hizlideploy
-pm2 startup systemd
-pm2 save
+$PM2_PATH start backend/server.js --name hizlideploy
+$PM2_PATH startup systemd
+$PM2_PATH save
 
 # Systemd servis dosyası oluştur
-cat > /etc/systemd/system/hizlideploy.service << 'EOF'
+cat > /etc/systemd/system/hizlideploy.service << EOF
 [Unit]
 Description=HızlıDeploy Service
 After=network.target
@@ -77,8 +89,8 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/hizlideploy
-ExecStart=/usr/bin/pm2 start backend/server.js --name hizlideploy --no-daemon
-ExecStop=/usr/bin/pm2 stop hizlideploy
+ExecStart=$PM2_PATH start backend/server.js --name hizlideploy --no-daemon
+ExecStop=$PM2_PATH stop hizlideploy
 Restart=always
 RestartSec=10
 
@@ -125,5 +137,5 @@ ufw --force enable
 echo "✅ HızlıDeploy başarıyla kuruldu!"
 echo " Web arayüzü: http://$(curl -s ifconfig.me || echo localhost)"
 echo " Admin: admin / admin123"
-echo " PM2 durumu: pm2 status"
+echo " PM2 durumu: $PM2_PATH status"
 
