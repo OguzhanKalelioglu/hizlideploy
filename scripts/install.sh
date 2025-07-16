@@ -88,11 +88,25 @@ chmod -R 755 "$INSTALL_DIR"
 # PM2 başlat
 echo "🚀 PM2 servisi başlatılıyor..."
 cd "$INSTALL_DIR"
-$PM2_CMD start backend/server.js --name hizlideploy
-$PM2_CMD startup systemd
-$PM2_CMD save
+
+# PM2'yi bul ve çalıştır
+NPM_BIN=$(npm bin -g)
+PM2_BIN="$NPM_BIN/pm2"
+
+if [ -f "$PM2_BIN" ]; then
+    echo "✅ PM2 bulundu: $PM2_BIN"
+    "$PM2_BIN" start backend/server.js --name hizlideploy
+    "$PM2_BIN" startup systemd
+    "$PM2_BIN" save
+else
+    echo "⚠️ PM2 bulunamadı, npx ile deneniyor..."
+    npx pm2 start backend/server.js --name hizlideploy
+    npx pm2 startup systemd
+    npx pm2 save
+fi
 
 # Systemd servis dosyası oluştur
+NPM_BIN_PATH=$(npm bin -g)
 cat > /etc/systemd/system/hizlideploy.service << EOF
 [Unit]
 Description=HızlıDeploy Service
@@ -102,11 +116,11 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/hizlideploy
-ExecStart=/bin/bash -c 'cd /opt/hizlideploy && $PM2_CMD start backend/server.js --name hizlideploy --no-daemon'
-ExecStop=/bin/bash -c '$PM2_CMD stop hizlideploy'
+ExecStart=/bin/bash -c 'cd /opt/hizlideploy && $NPM_BIN_PATH/pm2 start backend/server.js --name hizlideploy --no-daemon'
+ExecStop=/bin/bash -c '$NPM_BIN_PATH/pm2 stop hizlideploy'
 Restart=always
 RestartSec=10
-Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$NPM_BIN"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$NPM_BIN_PATH"
 
 [Install]
 WantedBy=multi-user.target
@@ -151,5 +165,5 @@ ufw --force enable
 echo "✅ HızlıDeploy başarıyla kuruldu!"
 echo " Web arayüzü: http://$(curl -s ifconfig.me || echo localhost)"
 echo " Admin: admin / admin123"
-echo " PM2 durumu: $PM2_CMD status"
+echo " PM2 durumu için: $(npm bin -g)/pm2 status veya npx pm2 status"
 
