@@ -169,10 +169,12 @@ class DeploymentEngine {
 
       // Deployment'ı tamamla
       await this.updateDeploymentStatus(deploymentId, 'success');
+      this.broadcastLog(projectId, 'system', `✅ Deployment #${deploymentId} başarıyla tamamlandı.`);
 
       console.log(`Deployment tamamlandı: ${project.name} (Port: ${port.external_port})`);
     } catch (error) {
       await this.updateDeploymentStatus(deploymentId, 'failed', error.message);
+      this.broadcastLog(projectId, 'system', `❌ Deployment #${deploymentId} başarısız oldu: ${error.message}`);
       throw error;
     }
   }

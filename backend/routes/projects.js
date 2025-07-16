@@ -49,33 +49,28 @@ const upload = multer({
 // Tüm projeleri listele
 router.get('/', async (req, res) => {
   try {
-    // Veritabanından projeleri al
-    db.all('SELECT * FROM projects ORDER BY created_at DESC', (err, dbProjects) => {
+    const query = `
+      SELECT
+        p.*,
+        d.status as last_deployment_status,
+        d.started_at as last_deployment_at
+      FROM projects p
+      LEFT JOIN (
+        SELECT 
+          project_id, 
+          status, 
+          started_at,
+          ROW_NUMBER() OVER(PARTITION BY project_id ORDER BY started_at DESC) as rn
+        FROM deployments
+      ) d ON p.id = d.project_id AND d.rn = 1
+      ORDER BY p.created_at DESC
+    `;
+
+    db.all(query, (err, projects) => {
       if (err) {
-        return res.status(500).json({ error: 'Veritabanı hatası' });
+        return res.status(500).json({ error: 'Veritabanı hatası: ' + err.message });
       }
-
-      // Dosya sisteminden projeleri tara
-      projectScanner.scanProjects().then(scannedProjects => {
-        // Veritabanı ile dosya sistemini senkronize et
-        const syncedProjects = scannedProjects.map(scanned => {
-          const dbProject = dbProjects.find(db => db.name === scanned.name);
-          return {
-            ...scanned,
-            id: dbProject?.id,
-            port: dbProject?.port,
-            external_port: dbProject?.external_port,
-            status: dbProject?.status || 'stopped',
-            created_at: dbProject?.created_at,
-            updated_at: dbProject?.updated_at
-          };
-        });
-
-        res.json(syncedProjects);
-      }).catch(error => {
-        console.error('Proje tarama hatası:', error);
-        res.status(500).json({ error: 'Proje tarama hatası' });
-      });
+      res.json(projects);
     });
   } catch (error) {
     console.error('Proje listesi hatası:', error);

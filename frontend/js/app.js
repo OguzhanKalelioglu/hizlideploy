@@ -113,7 +113,7 @@ async function loadProjects() {
         const data = await apiRequest('/api/projects');
         if (data) {
             projects = data;
-            renderProjects();
+            renderProjects(projects);
             updateStats();
         }
     } catch (error) {
@@ -140,104 +140,90 @@ async function syncProjects() {
 
 
 
-function renderProjects() {
-    const tbody = document.getElementById('projectsTable');
-    
+function renderProjects(projects) {
+    const projectsContainer = document.getElementById('projectsContainer');
     if (projects.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="6" class="text-center empty-state">
-                    <i class="fas fa-folder-open"></i>
-                    <p>Henüz proje bulunamadı</p>
-                    <button class="btn btn-primary" onclick="syncProjects()">
-                        <i class="fas fa-sync me-2"></i>Projeleri Tara
-                    </button>
-                </td>
-            </tr>
+        projectsContainer.innerHTML = `
+            <div class="col-12 text-center">
+                <p class="text-muted">Henüz proje bulunamadı.</p>
+                <button class="btn btn-primary" onclick="syncProjects()"><i class="fas fa-sync"></i> Projeleri Tara</button>
+            </div>
         `;
         return;
     }
-    
-    tbody.innerHTML = projects.map(project => `
-        <tr>
-            <td>
-                <strong>${project.name}</strong>
-                <br>
-                <small class="text-muted">${project.description || 'Açıklama yok'}</small>
-            </td>
-            <td>
-                <span class="badge bg-secondary">${project.type}</span>
-            </td>
-            <td>
-                <span class="badge status-badge status-${project.status}">
-                    ${getStatusText(project.status)}
-                </span>
-            </td>
-            <td>
-                ${project.external_port ? `
-                    <span class="badge bg-info port-badge" id="port-${project.id}">${project.external_port}</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="editPort(${project.id})" title="Port Değiştir">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    ${project.status === 'running' ? `
-                        <br><a href="http://localhost:${project.external_port}" target="_blank" class="btn btn-sm btn-outline-primary mt-1">
-                            <i class="fas fa-external-link-alt me-1"></i>Aç
-                        </a>
-                    ` : ''}
-                ` : '<span class="text-muted">Port yok</span>'}
-            </td>
-            <td>
-                <small class="text-muted">${formatDate(project.updated_at)}</small>
-            </td>
-            <td class="project-actions">
-                ${renderProjectActions(project)}
-            </td>
-        </tr>
-    `).join('');
+
+    const projectHtml = projects.map(project => {
+        const statusInfo = getStatusInfo(project.status);
+        const lastDeploymentStatus = project.last_deployment_status 
+            ? getDeploymentStatusInfo(project.last_deployment_status)
+            : { text: 'Yok', class: 'secondary' };
+
+        return `
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card project-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <h5 class="card-title">
+                                <i class="${projectScanner.getProjectTypeInfo(project.type)?.icon || 'fas fa-project-diagram'}"></i> ${project.name}
+                            </h5>
+                            <span class="badge bg-${statusInfo.class} text-white">${statusInfo.text}</span>
+                        </div>
+                        <p class="card-text text-muted small">${project.description || 'Açıklama yok'}</p>
+                        <div class="d-flex justify-content-between text-muted small mt-2">
+                            <span>Son Deployment:</span>
+                            <span class="badge bg-${lastDeploymentStatus.class}">${lastDeploymentStatus.text}</span>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <button class="btn btn-sm btn-primary" onclick="deployProject(${project.id})" title="Deploy">
+                                <i class="fas fa-rocket"></i> Deploy
+                            </button>
+                            <button class="btn btn-sm btn-info" onclick="showLogs(${project.id})" title="Logları Görüntüle">
+                                <i class="fas fa-file-alt"></i> Loglar
+                            </button>
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-cog"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="#" onclick="startProject(${project.id})"><i class="fas fa-play fa-fw"></i> Başlat</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="stopProject(${project.id})"><i class="fas fa-stop fa-fw"></i> Durdur</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="restartProject(${project.id})"><i class="fas fa-sync-alt fa-fw"></i> Yeniden Başlat</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="#" onclick="openProjectSettings(${project.id})"><i class="fas fa-cogs fa-fw"></i> Ayarlar</a></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteProject(${project.id})"><i class="fas fa-trash fa-fw"></i> Sil</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    projectsContainer.innerHTML = projectHtml;
 }
 
-function renderProjectActions(project) {
-    const actions = [];
-    
-    if (project.status === 'stopped') {
-        actions.push(`<button class="btn btn-success btn-sm" onclick="startProject(${project.id})">
-            <i class="fas fa-play"></i> Başlat
-        </button>`);
-        
-        actions.push(`<button class="btn btn-primary btn-sm" onclick="deployProject(${project.id})">
-            <i class="fas fa-rocket"></i> Deploy
-        </button>`);
-    } else if (project.status === 'running') {
-        actions.push(`<button class="btn btn-warning btn-sm" onclick="stopProject(${project.id})">
-            <i class="fas fa-stop"></i> Durdur
-        </button>`);
-        
-        actions.push(`<button class="btn btn-info btn-sm" onclick="restartProject(${project.id})">
-            <i class="fas fa-redo"></i> Restart
-        </button>`);
+function getDeploymentStatusInfo(status) {
+    switch (status) {
+        case 'success': return { text: 'Başarılı', class: 'success' };
+        case 'failed': return { text: 'Başarısız', class: 'danger' };
+        case 'building': return { text: 'Hazırlanıyor', class: 'info' };
+        case 'pending': return { text: 'Beklemede', class: 'warning' };
+        default: return { text: status || 'Bilinmiyor', class: 'secondary' };
     }
-    
-    actions.push(`<button class="btn btn-outline-primary btn-sm" onclick="showProjectSettings(${project.id})">
-        <i class="fas fa-cog"></i> Ayarlar
-    </button>`);
-    
-    actions.push(`<button class="btn btn-outline-secondary btn-sm" onclick="showProjectLogs(${project.id})">
-        <i class="fas fa-terminal"></i> Loglar
-    </button>`);
-    
-    return actions.join(' ');
 }
 
-function getStatusText(status) {
-    const statusMap = {
-        'running': 'Çalışıyor',
-        'stopped': 'Durduruldu',
-        'error': 'Hata',
-        'building': 'Build Ediliyor',
-        'pending': 'Bekliyor'
-    };
-    
-    return statusMap[status] || status;
+// Proje durumuna göre renk ve metin döndürür
+function getStatusInfo(status) {
+    switch (status) {
+        case 'running': return { text: 'Çalışıyor', class: 'success' };
+        case 'stopped': return { text: 'Durduruldu', class: 'secondary' };
+        case 'error': return { text: 'Hata', class: 'danger' };
+        case 'building': return { text: 'Build Ediliyor', class: 'info' };
+        case 'pending': return { text: 'Bekliyor', class: 'warning' };
+        default: return { text: status || 'Bilinmiyor', class: 'secondary' };
+    }
 }
 
 function formatDate(dateString) {
@@ -328,11 +314,13 @@ async function deployProject(projectId) {
         });
         
         if (data) {
-            showToast('Deployment başlatıldı', 'success');
+            showToast('Deployment başlatıldı. Loglar aşağıda gösteriliyor.', 'info');
+            showBottomLogPanel(projectId);
             loadProjects();
         }
     } catch (error) {
         console.error('Deploy project error:', error);
+        showToast(error.message || 'Deployment başlatılamadı', 'error');
     }
 }
 
@@ -762,6 +750,16 @@ function handleLogMessage(data) {
         showBottomLogPanel(data.projectId);
     }
     
+    if (data.logType === 'system' && data.message) {
+        if (data.message.includes('✅ Deployment')) {
+            showToast(data.message, 'success');
+            setTimeout(() => hideBottomLogPanel(), 3000);
+        } else if (data.message.includes('❌ Deployment')) {
+            showToast(data.message, 'error');
+            setTimeout(() => hideBottomLogPanel(), 5000); // Hata mesajını okumak için daha uzun süre
+        }
+    }
+    
     // Handle bottom log panel updates
     if (activeBottomLogProject == data.projectId) {
         appendToBottomLogs(data);
@@ -1004,3 +1002,13 @@ async function handleUploadProject(e) {
 setInterval(() => {
     loadProjects();
 }, 30000); // Refresh every 30 seconds 
+
+async function loadDashboardStats() {
+    try {
+        const projects = await apiRequest('/api/projects');
+        document.getElementById('totalProjects').textContent = projects.length;
+        document.getElementById('runningProjects').textContent = projects.filter(p => p.status === 'running').length;
+    } catch (error) {
+        console.error('Dashboard stats error:', error);
+    }
+}
