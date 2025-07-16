@@ -5,7 +5,7 @@
 
 set -e
 
-echo " HızlıDeploy kurulumu başlıyor..."
+echo "��� HızlıDeploy kurulumu başlıyor..."
 
 # Root kontrolü
 if [ "$EUID" -ne 0 ]; then
@@ -14,12 +14,12 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Temel paketleri kur
-echo " Temel paketler kuruluyor..."
+echo "��� Temel paketler kuruluyor..."
 apt-get update -y
 apt-get install -y curl wget git nginx sqlite3 software-properties-common
 
 # Node.js kur
-echo " Node.js kuruluyor..."
+echo "��� Node.js kuruluyor..."
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 apt-get install -y nodejs
 
@@ -30,7 +30,7 @@ npm install -g pm2
 
 # Kurulum dizini
 INSTALL_DIR="/opt/hizlideploy"
-echo " Kurulum dizini: $INSTALL_DIR"
+echo "��� Kurulum dizini: $INSTALL_DIR"
 
 # Eski kurulum varsa yedekle
 if [ -d "$INSTALL_DIR" ]; then
@@ -38,12 +38,12 @@ if [ -d "$INSTALL_DIR" ]; then
 fi
 
 # GitHub deposunu klon et
-echo " GitHub deposu klonlanıyor..."
+echo "��� GitHub deposu klonlanıyor..."
 git clone https://github.com/OguzhanKalelioglu/hizlideploy.git "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 # Bağımlılıkları yükle
-echo " Bağımlılıklar yükleniyor..."
+echo "��� Bağımlılıklar yükleniyor..."
 npm install --production
 
 # Setup çalıştır
@@ -51,7 +51,7 @@ echo "⚙️ Setup çalıştırılıyor..."
 npm run setup
 
 # Kullanıcı oluştur
-echo " Sistem kullanıcısı oluşturuluyor..."
+echo "��� Sistem kullanıcısı oluşturuluyor..."
 if ! id "hizlideploy" &>/dev/null; then
     useradd -r -s /bin/false -d "$INSTALL_DIR" -c "HızlıDeploy Service" hizlideploy
 fi
@@ -66,6 +66,30 @@ cd "$INSTALL_DIR"
 npx pm2 start backend/server.js --name hizlideploy
 npx pm2 startup systemd
 npx pm2 save
+
+# Systemd servis dosyası oluştur
+cat > /etc/systemd/system/hizlideploy.service << EOF
+[Unit]
+Description=HızlıDeploy Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/hizlideploy
+ExecStart=/bin/bash -c 'cd /opt/hizlideploy && npx pm2 start backend/server.js --name hizlideploy --no-daemon'
+ExecStop=/bin/bash -c 'npx pm2 stop hizlideploy'
+Restart=always
+RestartSec=10
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable hizlideploy
+systemctl start hizlideploy
 
 # Nginx yapılandır
 echo " Nginx yapılandırılıyor..."
@@ -90,21 +114,7 @@ EOF
 
 ln -sf /etc/nginx/sites-available/hizlideploy /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
-
-# Nginx'i yeniden başlat (Evrensel Yöntem)
-if nginx -t; then
-    echo "Nginx yapılandırması geçerli."
-    if [ -d /run/systemd/system ]; then
-        echo "systemd algılandı, Nginx systemctl ile yeniden başlatılıyor..."
-        systemctl restart nginx
-    else
-        echo "systemd algılanmadı, Nginx 'service' komutu ile yeniden başlatılıyor..."
-        service nginx restart
-    fi
-else
-    echo "❌ Nginx yapılandırma hatası!"
-    exit 1
-fi
+nginx -t && systemctl restart nginx
 
 # Güvenlik duvarı
 echo " Güvenlik duvarı yapılandırılıyor..."
