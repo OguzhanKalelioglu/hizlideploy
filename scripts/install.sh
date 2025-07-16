@@ -28,31 +28,6 @@ echo "⚙️ PM2 kuruluyor..."
 npm install -g npm@latest
 npm install -g pm2
 
-# PM2'nin gerçek path'ini bul
-NPM_BIN=$(npm bin -g)
-PM2_PATH="$NPM_BIN/pm2"
-
-# PM2'nin varlığını kontrol et
-if [ ! -f "$PM2_PATH" ]; then
-    echo "❌ PM2 bulunamadı: $PM2_PATH"
-    echo "PM2'yi tekrar kurmayı deniyor..."
-    npm install -g pm2 --force
-    PM2_PATH="$NPM_BIN/pm2"
-    
-    # Hala bulunamazsa alternatif yöntem
-    if [ ! -f "$PM2_PATH" ]; then
-        echo "⚠️ PM2 hala bulunamadı, alternatif yöntem deneniyor..."
-        # PM2'yi npx ile çalıştır
-        PM2_CMD="npx pm2"
-    else
-        PM2_CMD="$PM2_PATH"
-    fi
-else
-    PM2_CMD="$PM2_PATH"
-fi
-
-echo "✅ PM2 komutu: $PM2_CMD"
-
 # Kurulum dizini
 INSTALL_DIR="/opt/hizlideploy"
 echo "��� Kurulum dizini: $INSTALL_DIR"
@@ -88,25 +63,11 @@ chmod -R 755 "$INSTALL_DIR"
 # PM2 başlat
 echo "🚀 PM2 servisi başlatılıyor..."
 cd "$INSTALL_DIR"
-
-# PM2'yi bul ve çalıştır
-NPM_BIN=$(npm bin -g)
-PM2_BIN="$NPM_BIN/pm2"
-
-if [ -f "$PM2_BIN" ]; then
-    echo "✅ PM2 bulundu: $PM2_BIN"
-    "$PM2_BIN" start backend/server.js --name hizlideploy
-    "$PM2_BIN" startup systemd
-    "$PM2_BIN" save
-else
-    echo "⚠️ PM2 bulunamadı, npx ile deneniyor..."
-    npx pm2 start backend/server.js --name hizlideploy
-    npx pm2 startup systemd
-    npx pm2 save
-fi
+npx pm2 start backend/server.js --name hizlideploy
+npx pm2 startup systemd
+npx pm2 save
 
 # Systemd servis dosyası oluştur
-NPM_BIN_PATH=$(npm bin -g)
 cat > /etc/systemd/system/hizlideploy.service << EOF
 [Unit]
 Description=HızlıDeploy Service
@@ -116,11 +77,11 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/hizlideploy
-ExecStart=/bin/bash -c 'cd /opt/hizlideploy && $NPM_BIN_PATH/pm2 start backend/server.js --name hizlideploy --no-daemon'
-ExecStop=/bin/bash -c '$NPM_BIN_PATH/pm2 stop hizlideploy'
+ExecStart=/bin/bash -c 'cd /opt/hizlideploy && npx pm2 start backend/server.js --name hizlideploy --no-daemon'
+ExecStop=/bin/bash -c 'npx pm2 stop hizlideploy'
 Restart=always
 RestartSec=10
-Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$NPM_BIN_PATH"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 [Install]
 WantedBy=multi-user.target
@@ -165,5 +126,5 @@ ufw --force enable
 echo "✅ HızlıDeploy başarıyla kuruldu!"
 echo " Web arayüzü: http://$(curl -s ifconfig.me || echo localhost)"
 echo " Admin: admin / admin123"
-echo " PM2 durumu için: $(npm bin -g)/pm2 status veya npx pm2 status"
+echo " PM2 durumu için: npx pm2 status"
 
