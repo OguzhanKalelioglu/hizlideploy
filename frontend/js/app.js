@@ -138,7 +138,18 @@ async function syncProjects() {
     }
 }
 
-
+function getProjectTypeInfo(type) {
+    const typeMap = {
+        'nodejs': { name: 'Node.js', icon: 'fab fa-node-js' },
+        'python-flask': { name: 'Python Flask', icon: 'fab fa-python' },
+        'python-django': { name: 'Python Django', icon: 'fab fa-python' },
+        'react': { name: 'React', icon: 'fab fa-react' },
+        'vue': { name: 'Vue.js', icon: 'fab fa-vuejs' },
+        'static': { name: 'Statik Site', icon: 'fas fa-globe' },
+        'php': { name: 'PHP', icon: 'fab fa-php' }
+    };
+    return typeMap[type] || { name: type, icon: 'fas fa-project-diagram' };
+}
 
 function renderProjects(projects) {
     const projectsContainer = document.getElementById('projectsContainer');
@@ -164,7 +175,7 @@ function renderProjects(projects) {
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start">
                             <h5 class="card-title">
-                                <i class="${projectScanner.getProjectTypeInfo(project.type)?.icon || 'fas fa-project-diagram'}"></i> ${project.name}
+                                <i class="${getProjectTypeInfo(project.type)?.icon || 'fas fa-project-diagram'}"></i> ${project.name}
                             </h5>
                             <span class="badge bg-${statusInfo.class} text-white">${statusInfo.text}</span>
                         </div>
