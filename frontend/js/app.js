@@ -176,7 +176,7 @@ function renderProjects() {
             <td>
                 ${project.external_port ? `
                     <span class="badge bg-info port-badge" id="port-${project.id}">${project.external_port}</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="editPort(${project.id}, ${project.external_port}, '${project.status}')" title="Port Değiştir">
+                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="editPort(${project.id})" title="Port Değiştir">
                         <i class="fas fa-edit"></i>
                     </button>
                     ${project.status === 'running' ? `
@@ -274,29 +274,20 @@ async function loadDeploymentStats() {
 // Project actions
 async function startProject(projectId) {
     try {
-        // Loading state için button'ı disable et
-        const startBtn = document.querySelector(`[onclick="startProject(${projectId})"]`);
-        if (startBtn) {
-            startBtn.disabled = true;
-            startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Başlatılıyor...';
-        }
+        showToast('Proje başlatılıyor...', 'info');
         
-        const data = await apiRequest(`/api/deployments/start/${projectId}`, {
+        const data = await apiRequest(`/api/projects/${projectId}/start`, {
             method: 'POST'
         });
         
-        if (data) {
-            showToast('Proje başlatılıyor...', 'info');
-            setTimeout(loadProjects, 1000); // 1 saniye sonra yenile
+        if (data && data.success) {
+            showToast(`${data.name} projesi başlatıldı`, 'success');
+            loadProjects();
+        } else {
+            showToast(data.message || 'Proje başlatılamadı', 'error');
         }
     } catch (error) {
         console.error('Start project error:', error);
-        showToast('Proje başlatılamadı', 'error');
-    } finally {
-        // Button'ı normal haline döndür
-        setTimeout(() => {
-            loadProjects();
-        }, 2000);
     }
 }
 
@@ -345,59 +336,10 @@ async function deployProject(projectId) {
     }
 }
 
-// Port değiştirme fonksiyonu
-async function editPort(projectId, currentPort, status) {
-    let message = `Yeni port numarası girin (Mevcut: ${currentPort})\n\nPort 1024-65535 arasında olmalıdır:`;
-    
-    if (status === 'running') {
-        message += '\n\n⚠️ Proje çalışıyor. Port değişikliği için proje yeniden başlatılacak.';
-    }
-    
-    const newPort = prompt(message, currentPort);
-    
-    if (newPort === null) return; // İptal edildi
-    
-    const port = parseInt(newPort);
-    
-    if (isNaN(port) || port < 1024 || port > 65535) {
-        showToast('Geçersiz port numarası. Port 1024-65535 arasında olmalıdır.', 'error');
-        return;
-    }
-    
-    try {
-        // Eğer proje çalışıyorsa önce durdur
-        if (status === 'running') {
-            showToast('Proje durduruluyor...', 'info');
-            await apiRequest(`/api/deployments/stop/${projectId}`, {
-                method: 'POST'
-            });
-            
-            // Biraz bekle ki proje düzgün dursun
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-        
-        const data = await apiRequest(`/api/projects/${projectId}/port`, {
-            method: 'PUT',
-            body: JSON.stringify({ port })
-        });
-        
-        if (data) {
-            showToast(`Port ${port} olarak güncellendi`, 'success');
-            loadProjects();
-            
-            // Eğer proje çalışıyordu, yeniden başlat
-            if (status === 'running') {
-                showToast('Proje yeni port ile başlatılıyor...', 'info');
-                setTimeout(async () => {
-                    await apiRequest(`/api/deployments/start/${projectId}`, {
-                        method: 'POST'
-                    });
-                }, 3000);
-            }
-        }
-    } catch (error) {
-        console.error('Port update error:', error);
-    }
+async function editPort(projectId) {
+    // Port düzenleme işlemi için doğrudan ayarlar menüsünü aç
+    showProjectSettings(projectId);
+    showToast('Port ayarını bu menüden değiştirebilirsiniz.', 'info');
 }
 
 // Settings modal fonksiyonları
@@ -446,7 +388,7 @@ async function handleSaveSettings(e) {
         // Port değişikliği varsa
         const currentProject = projects.find(p => p.id == projectId);
         if (currentProject && currentProject.external_port !== newPort) {
-            await editPort(projectId, currentProject.external_port, projectStatus);
+            await editPort(projectId);
         }
         
         // Proje bilgilerini güncelle (name, description)
