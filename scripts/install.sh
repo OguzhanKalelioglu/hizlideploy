@@ -28,17 +28,19 @@ echo "⚙️ PM2 kuruluyor..."
 npm install -g npm@latest
 npm install -g pm2
 
-# PATH'i güncelle
-export PATH=$PATH:$(npm config get prefix)/bin
-source ~/.bashrc || true
+# PM2'nin gerçek path'ini bul
+NPM_BIN=$(npm bin -g)
+PM2_PATH="$NPM_BIN/pm2"
 
-# PM2 komutunun mevcut olup olmadığını kontrol et
-if ! command -v pm2 &> /dev/null; then
-    echo "⚠️ PM2 PATH'te bulunamadı, tam path kullanılıyor..."
-    PM2_PATH=$(npm config get prefix)/bin/pm2
-else
-    PM2_PATH=pm2
+# PM2'nin varlığını kontrol et
+if [ ! -f "$PM2_PATH" ]; then
+    echo "❌ PM2 bulunamadı: $PM2_PATH"
+    echo "PM2'yi tekrar kurmayı deniyor..."
+    npm install -g pm2 --force
+    PM2_PATH="$NPM_BIN/pm2"
 fi
+
+echo "✅ PM2 yolu: $PM2_PATH"
 
 # Kurulum dizini
 INSTALL_DIR="/opt/hizlideploy"
