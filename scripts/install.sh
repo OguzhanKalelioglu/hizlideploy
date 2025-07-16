@@ -5,7 +5,7 @@
 
 set -e
 
-echo "��� HızlıDeploy kurulumu başlıyor..."
+echo "��� HızlıDeploy kurulumu başlıyor..."
 
 # Root kontrolü
 if [ "$EUID" -ne 0 ]; then
@@ -14,12 +14,12 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Temel paketleri kur
-echo "��� Temel paketler kuruluyor..."
+echo "��� Temel paketler kuruluyor..."
 apt-get update -y
 apt-get install -y curl wget git nginx sqlite3 software-properties-common
 
 # Node.js kur
-echo "��� Node.js kuruluyor..."
+echo "��� Node.js kuruluyor..."
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 apt-get install -y nodejs
 
@@ -30,7 +30,7 @@ npm install -g pm2
 
 # Kurulum dizini
 INSTALL_DIR="/opt/hizlideploy"
-echo "��� Kurulum dizini: $INSTALL_DIR"
+echo "��� Kurulum dizini: $INSTALL_DIR"
 
 # Eski kurulum varsa yedekle
 if [ -d "$INSTALL_DIR" ]; then
@@ -38,12 +38,12 @@ if [ -d "$INSTALL_DIR" ]; then
 fi
 
 # GitHub deposunu klon et
-echo "��� GitHub deposu klonlanıyor..."
+echo "��� GitHub deposu klonlanıyor..."
 git clone https://github.com/OguzhanKalelioglu/hizlideploy.git "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 # Bağımlılıkları yükle
-echo "��� Bağımlılıklar yükleniyor..."
+echo "��� Bağımlılıklar yükleniyor..."
 npm install --production
 
 # Setup çalıştır
@@ -51,7 +51,7 @@ echo "⚙️ Setup çalıştırılıyor..."
 npm run setup
 
 # Kullanıcı oluştur
-echo "��� Sistem kullanıcısı oluşturuluyor..."
+echo "��� Sistem kullanıcısı oluşturuluyor..."
 if ! id "hizlideploy" &>/dev/null; then
     useradd -r -s /bin/false -d "$INSTALL_DIR" -c "HızlıDeploy Service" hizlideploy
 fi
@@ -61,13 +61,37 @@ chown -R hizlideploy:hizlideploy "$INSTALL_DIR"
 chmod -R 755 "$INSTALL_DIR"
 
 # PM2 başlat
-echo "��� PM2 servisi başlatılıyor..."
-runuser -l hizlideploy -c "cd $INSTALL_DIR && pm2 start backend/server.js --name hizlideploy"
-pm2 startup systemd -u hizlideploy --hp /home/hizlideploy
+echo "🚀 PM2 servisi başlatılıyor..."
+cd "$INSTALL_DIR"
+pm2 start backend/server.js --name hizlideploy
+pm2 startup systemd
 pm2 save
 
+# Systemd servis dosyası oluştur
+cat > /etc/systemd/system/hizlideploy.service << 'EOF'
+[Unit]
+Description=HızlıDeploy Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/hizlideploy
+ExecStart=/usr/bin/pm2 start backend/server.js --name hizlideploy --no-daemon
+ExecStop=/usr/bin/pm2 stop hizlideploy
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable hizlideploy
+systemctl start hizlideploy
+
 # Nginx yapılandır
-echo "��� Nginx yapılandırılıyor..."
+echo " Nginx yapılandırılıyor..."
 cat > /etc/nginx/sites-available/hizlideploy << EOF
 server {
     listen 80;
@@ -92,14 +116,14 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl restart nginx
 
 # Güvenlik duvarı
-echo "��� Güvenlik duvarı yapılandırılıyor..."
+echo " Güvenlik duvarı yapılandırılıyor..."
 ufw allow 80/tcp
 ufw allow 443/tcp
 ufw allow 22/tcp
 ufw --force enable
 
 echo "✅ HızlıDeploy başarıyla kuruldu!"
-echo "��� Web arayüzü: http://$(curl -s ifconfig.me || echo localhost)"
-echo "��� Admin: admin / admin123"
-echo "��� PM2 durumu: pm2 status"
+echo " Web arayüzü: http://$(curl -s ifconfig.me || echo localhost)"
+echo " Admin: admin / admin123"
+echo " PM2 durumu: pm2 status"
 
