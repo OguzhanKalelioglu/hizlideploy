@@ -276,15 +276,15 @@ async function startProject(projectId) {
     try {
         showToast('Proje başlatılıyor...', 'info');
         
-        const data = await apiRequest(`/api/projects/${projectId}/start`, {
+        const data = await apiRequest(`/api/deployments/start/${projectId}`, {
             method: 'POST'
         });
         
-        if (data && data.success) {
-            showToast(`${data.name} projesi başlatıldı`, 'success');
+        if (data && (data.pid || data.message.includes('başlatıldı'))) {
+            showToast(`Proje başlatıldı`, 'success');
             loadProjects();
         } else {
-            showToast(data.message || 'Proje başlatılamadı', 'error');
+            showToast(data.message || data.error || 'Proje başlatılamadı', 'error');
         }
     } catch (error) {
         console.error('Start project error:', error);
