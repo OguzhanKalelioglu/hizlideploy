@@ -38,9 +38,20 @@ if [ ! -f "$PM2_PATH" ]; then
     echo "PM2'yi tekrar kurmayı deniyor..."
     npm install -g pm2 --force
     PM2_PATH="$NPM_BIN/pm2"
+    
+    # Hala bulunamazsa alternatif yöntem
+    if [ ! -f "$PM2_PATH" ]; then
+        echo "⚠️ PM2 hala bulunamadı, alternatif yöntem deneniyor..."
+        # PM2'yi npx ile çalıştır
+        PM2_CMD="npx pm2"
+    else
+        PM2_CMD="$PM2_PATH"
+    fi
+else
+    PM2_CMD="$PM2_PATH"
 fi
 
-echo "✅ PM2 yolu: $PM2_PATH"
+echo "✅ PM2 komutu: $PM2_CMD"
 
 # Kurulum dizini
 INSTALL_DIR="/opt/hizlideploy"
@@ -77,9 +88,9 @@ chmod -R 755 "$INSTALL_DIR"
 # PM2 başlat
 echo "🚀 PM2 servisi başlatılıyor..."
 cd "$INSTALL_DIR"
-$PM2_PATH start backend/server.js --name hizlideploy
-$PM2_PATH startup systemd
-$PM2_PATH save
+$PM2_CMD start backend/server.js --name hizlideploy
+$PM2_CMD startup systemd
+$PM2_CMD save
 
 # Systemd servis dosyası oluştur
 cat > /etc/systemd/system/hizlideploy.service << EOF
@@ -91,10 +102,11 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/hizlideploy
-ExecStart=$PM2_PATH start backend/server.js --name hizlideploy --no-daemon
-ExecStop=$PM2_PATH stop hizlideploy
+ExecStart=/bin/bash -c 'cd /opt/hizlideploy && $PM2_CMD start backend/server.js --name hizlideploy --no-daemon'
+ExecStop=/bin/bash -c '$PM2_CMD stop hizlideploy'
 Restart=always
 RestartSec=10
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$NPM_BIN"
 
 [Install]
 WantedBy=multi-user.target
@@ -139,5 +151,5 @@ ufw --force enable
 echo "✅ HızlıDeploy başarıyla kuruldu!"
 echo " Web arayüzü: http://$(curl -s ifconfig.me || echo localhost)"
 echo " Admin: admin / admin123"
-echo " PM2 durumu: $PM2_PATH status"
+echo " PM2 durumu: $PM2_CMD status"
 
