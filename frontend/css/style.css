@@ -312,6 +312,164 @@ body {
     transition: width 0.3s ease;
 }
 
+/* Project Cards */
+.project-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid #e0e0e0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.project-card .card-title {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.project-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Running Project Card */
+.project-card.project-running {
+    border: 2px solid #198754;
+}
+
+.project-card.project-running:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.project-card .card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.project-card .card-footer {
+    background-color: #f8f9fa;
+    border-top: 1px solid #e0e0e0;
+    padding: 0.75rem;
+    margin-top: auto;
+}
+
+.project-card .card-footer .btn {
+    margin-right: 0.25rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.project-card .card-footer .btn:last-child {
+    margin-right: 0;
+}
+
+.project-card .card-footer .btn-group .btn {
+    margin-right: 0;
+}
+
+/* Project Cards Container */
+.card-view {
+    display: block;
+    padding: 1rem 0;
+}
+
+.card-view .row {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 0 -0.75rem;
+}
+
+.project-card-wrapper {
+    padding: 0 0.75rem 1.5rem 0.75rem;
+    flex: 0 0 auto;
+}
+
+/* View Toggle */
+.view-toggle {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.25rem;
+    display: inline-flex;
+    gap: 0.25rem;
+}
+
+.view-toggle .btn {
+    border: none;
+    background: transparent;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.25rem;
+    color: #6c757d;
+    transition: all 0.2s;
+}
+
+.view-toggle .btn.active {
+    background: #007bff;
+    color: white;
+    box-shadow: 0 2px 4px rgba(0,123,255,0.2);
+}
+
+.view-toggle .btn:hover:not(.active) {
+    background: #e9ecef;
+    color: #495057;
+}
+
+/* Table View */
+.table-view {
+    display: none;
+}
+
+.table-view.active {
+    display: block;
+}
+
+.card-view {
+    display: block;
+}
+
+.card-view.active {
+    display: block;
+}
+
+/* Ensure only one view is active at a time */
+.card-view:not(.active) {
+    display: none;
+}
+
+.table-view:not(.active) {
+    display: none;
+}
+
+.project-table .btn {
+    margin-right: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+.project-table .btn:last-child {
+    margin-right: 0;
+}
+
+.project-actions {
+    white-space: nowrap;
+}
+
+/* Deployment Status Badges */
+.deployment-status {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+}
+
+/* Table view improvements for running projects */
+.table-success {
+    background-color: rgba(25, 135, 84, 0.05) !important;
+}
+
+.table-success:hover {
+    background-color: rgba(25, 135, 84, 0.08) !important;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .stats-card {
@@ -332,6 +490,15 @@ body {
     
     .logs-content {
         font-size: 0.75rem;
+    }
+
+    .project-card .card-footer .btn {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    .view-toggle {
+        margin-bottom: 1rem;
     }
 }
 
@@ -403,7 +570,7 @@ body {
 
 .bottom-logs-content {
     background: #1a1a1a;
-    color: #00ff00;
+    color: #e8e8e8;
     font-family: 'Courier New', monospace;
     font-size: 12px;
     height: 100%;
@@ -414,4 +581,61 @@ body {
     border-radius: 0;
     padding: 15px;
     margin: 0;
+    line-height: 1.4;
+}
+
+/* Log type colors */
+.log-stdout {
+    color: #4CAF50; /* Green */
+}
+
+.log-stderr {
+    color: #f44336; /* Red */
+}
+
+.log-system {
+    color: #2196F3; /* Blue */
+}
+
+.log-build {
+    color: #FF9800; /* Orange */
+}
+
+.log-build-error {
+    color: #f44336; /* Red */
+}
+
+.log-error {
+    color: #f44336; /* Red */
+} 
+
+/* Responsive card layout */
+@media (max-width: 576px) {
+    .project-card-wrapper {
+        width: 100%;
+    }
+}
+
+@media (min-width: 577px) and (max-width: 768px) {
+    .project-card-wrapper {
+        width: 50%;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 992px) {
+    .project-card-wrapper {
+        width: 50%;
+    }
+}
+
+@media (min-width: 993px) and (max-width: 1200px) {
+    .project-card-wrapper {
+        width: 33.333%;
+    }
+}
+
+@media (min-width: 1201px) {
+    .project-card-wrapper {
+        width: 25%;
+    }
 } 

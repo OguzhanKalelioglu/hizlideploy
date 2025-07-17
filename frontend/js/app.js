@@ -6,6 +6,7 @@ let projectTypes = [];
 let selectedFile = null; // Drag & drop ile seçilen dosyayı tutacak
 let bottomLogCount = 0;
 let activeBottomLogProject = null;
+let currentView = 'card'; // 'card' or 'list'
 
 // DOM elements
 const projectModal = new bootstrap.Modal(document.getElementById('projectModal'));
@@ -16,19 +17,89 @@ const settingsModal = new bootstrap.Modal(document.getElementById('settingsModal
 const toast = new bootstrap.Toast(document.getElementById('toast'));
 
 // Initialize app
-document.addEventListener('DOMContentLoaded', function() {
-    initializeApp();
+document.addEventListener('DOMContentLoaded', () => {
+    loadProjects();
+    loadDashboardStats();
+    loadProjectTypes();
+    setupEventListeners();
+    initializeWebSocket();
 });
 
-function initializeApp() {
-    // Directly show main content and load projects
-    showMainContent();
-    loadProjects();
-    loadProjectTypes();
-    connectWebSocket();
+function showLoadingIndicator() {
+    const projectsContainer = document.getElementById('projectsContainer');
+    if (projectsContainer) {
+        projectsContainer.innerHTML = `
+            <div class="w-100 text-center p-5">
+                <i class="fas fa-spinner fa-spin fa-2x text-primary"></i>
+                <p class="mt-2 text-muted">Projeler yükleniyor...</p>
+            </div>
+        `;
+    }
+}
 
-    // Event listeners
-    setupEventListeners();
+function initializeWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    
+    try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WebSocket bağlantısı kuruldu.');
+            // Eğer aktif bir log takibi varsa tekrar subscribe ol
+            if (activeBottomLogProject) {
+                subscribeToProject(activeBottomLogProject);
+            }
+        };
+        
+        ws.onclose = () => {
+            console.log('WebSocket bağlantısı kapandı. 3 saniye içinde tekrar denenecek...');
+            setTimeout(initializeWebSocket, 3000);
+        };
+        
+        ws.onerror = (error) => console.error('WebSocket hatası:', error);
+
+        ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                console.log('🔄 WebSocket mesajı alındı:', message);
+                if (message.type === 'log') {
+                    handleLogMessage(message);
+                } else if (message.type === 'project_update') {
+                    loadProjects();
+                }
+            } catch (error) {
+                console.error('WebSocket mesajı işlenirken hata oluştu:', error);
+                console.error('Raw event data:', event.data);
+            }
+        };
+    } catch (error) {
+        console.error('WebSocket bağlantı hatası:', error);
+        setTimeout(initializeWebSocket, 3000);
+    }
+}
+
+// Projeye log takibi için abone ol
+function subscribeToProject(projectId) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const subscribeMessage = {
+            type: 'subscribe_logs',
+            projectId: projectId
+        };
+        ws.send(JSON.stringify(subscribeMessage));
+        console.log(`📡 Proje ${projectId} loglarına abone olundu`, subscribeMessage);
+    } else {
+        console.error('❌ WebSocket bağlantısı hazır değil:', ws ? ws.readyState : 'ws null');
+    }
+}
+
+// Proje aboneliğini iptal et
+function unsubscribeFromProject() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'unsubscribe_logs'
+        }));
+    }
 }
 
 function setupEventListeners() {
@@ -110,6 +181,7 @@ async function apiRequest(endpoint, options = {}) {
 // Project functions
 async function loadProjects() {
     try {
+        showLoadingIndicator();
         const data = await apiRequest('/api/projects');
         if (data) {
             projects = data;
@@ -152,10 +224,18 @@ function getProjectTypeInfo(type) {
 }
 
 function renderProjects(projects) {
+    if (currentView === 'card') {
+        renderProjectsCard(projects);
+    } else {
+        renderProjectsList(projects);
+    }
+}
+
+function renderProjectsCard(projects) {
     const projectsContainer = document.getElementById('projectsContainer');
     if (projects.length === 0) {
         projectsContainer.innerHTML = `
-            <div class="col-12 text-center">
+            <div class="w-100 text-center p-4">
                 <p class="text-muted">Henüz proje bulunamadı.</p>
                 <button class="btn btn-primary" onclick="syncProjects()"><i class="fas fa-sync"></i> Projeleri Tara</button>
             </div>
@@ -163,61 +243,194 @@ function renderProjects(projects) {
         return;
     }
 
-    const projectHtml = projects.map(project => {
-        const statusInfo = getStatusInfo(project.status);
-        const lastDeploymentStatus = project.last_deployment_status 
-            ? getDeploymentStatusInfo(project.last_deployment_status)
-            : { text: 'Yok', class: 'secondary' };
+    const projectHtml = `
+        <div class="row">
+            ${projects.map(project => {
+                const statusInfo = getStatusInfo(project.status);
+                const lastDeploymentStatus = project.last_deployment_status 
+                    ? getDeploymentStatusInfo(project.last_deployment_status)
+                    : { text: 'Yok', class: 'secondary' };
+                
+                const isRunning = project.status === 'running';
+                const projectUrl = isRunning && project.external_port ? `http://localhost:${project.external_port}` : null;
 
-        return `
-            <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card project-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <h5 class="card-title">
-                                <i class="${getProjectTypeInfo(project.type)?.icon || 'fas fa-project-diagram'}"></i> ${project.name}
-                            </h5>
-                            <span class="badge bg-${statusInfo.class} text-white">${statusInfo.text}</span>
-                        </div>
-                        <p class="card-text text-muted small">${project.description || 'Açıklama yok'}</p>
-                        <div class="d-flex justify-content-between text-muted small mt-2">
-                            <span>Son Deployment:</span>
-                            <span class="badge bg-${lastDeploymentStatus.class}">${lastDeploymentStatus.text}</span>
-                        </div>
-                    </div>
-                    <div class="card-footer">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <button class="btn btn-sm btn-primary" onclick="deployProject(${project.id})" title="Deploy">
-                                <i class="fas fa-rocket"></i> Deploy
-                            </button>
-                            <button class="btn btn-sm btn-info" onclick="showLogs(${project.id})" title="Logları Görüntüle">
-                                <i class="fas fa-file-alt"></i> Loglar
-                            </button>
-                            <div class="btn-group">
-                                <button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="fas fa-cog"></i>
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end">
-                                    <li><a class="dropdown-item" href="#" onclick="startProject(${project.id})"><i class="fas fa-play fa-fw"></i> Başlat</a></li>
-                                    <li><a class="dropdown-item" href="#" onclick="stopProject(${project.id})"><i class="fas fa-stop fa-fw"></i> Durdur</a></li>
-                                    <li><a class="dropdown-item" href="#" onclick="restartProject(${project.id})"><i class="fas fa-sync-alt fa-fw"></i> Yeniden Başlat</a></li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item" href="#" onclick="openProjectSettings(${project.id})"><i class="fas fa-cogs fa-fw"></i> Ayarlar</a></li>
-                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteProject(${project.id})"><i class="fas fa-trash fa-fw"></i> Sil</a></li>
-                                </ul>
+                return `
+                    <div class="project-card-wrapper">
+                        <div class="card project-card ${isRunning ? 'project-running' : ''}">
+                            <div class="card-body d-flex flex-column">
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <h6 class="card-title mb-0">
+                                        <i class="${getProjectTypeInfo(project.type)?.icon || 'fas fa-project-diagram'}"></i> ${project.name}
+                                    </h6>
+                                    <span class="badge bg-${statusInfo.class}">${statusInfo.text}</span>
+                                </div>
+                                <p class="card-text text-muted small mb-3">${project.description || 'Açıklama yok'}</p>
+                                <div class="mt-auto">
+                                    ${project.external_port ? `
+                                        <div class="d-flex justify-content-between text-muted small mb-2">
+                                            <span>Port:</span>
+                                            <div>
+                                                <span class="badge bg-info">${project.external_port}</span>
+                                                ${isRunning ? `
+                                                    <a href="${projectUrl}" target="_blank" class="ms-2" title="Projeyi Aç">
+                                                        <i class="fas fa-external-link-alt"></i>
+                                                    </a>
+                                                ` : ''}
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <div class="btn-toolbar justify-content-between" role="toolbar">
+                                    <div class="btn-group" role="group">
+                                        ${isRunning ? `
+                                            <button class="btn btn-warning btn-sm" onclick="stopProject(${project.id})" title="Durdur">
+                                                <i class="fas fa-stop"></i>
+                                            </button>
+                                            <button class="btn btn-info btn-sm" onclick="restartProject(${project.id})" title="Yeniden Başlat">
+                                                <i class="fas fa-sync-alt"></i>
+                                            </button>
+                                        ` : `
+                                            <button class="btn btn-success btn-sm" onclick="startProject(${project.id})" title="Başlat">
+                                                <i class="fas fa-play"></i>
+                                            </button>
+                                        `}
+                                        <button class="btn btn-primary btn-sm" onclick="deployProject(${project.id})" title="${isRunning ? 'Güncelle' : 'Deploy'}">
+                                            <i class="fas fa-rocket"></i>
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-outline-info btn-sm" onclick="showLogs(${project.id})" title="Loglar">
+                                            <i class="fas fa-terminal"></i>
+                                        </button>
+                                                                 <button class="btn btn-outline-secondary btn-sm" onclick="showProjectSettings(${project.id})" title="Ayarlar">
+                             <i class="fas fa-cog"></i>
+                         </button>
+                                        <button class="btn btn-outline-danger btn-sm" onclick="deleteProject(${project.id})" title="Sil">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+    projectsContainer.innerHTML = projectHtml;
+}
+
+function renderProjectsList(projects) {
+    const projectsTableBody = document.getElementById('projectsTableBody');
+    if (projects.length === 0) {
+        projectsTableBody.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center">
+                    <p class="text-muted mb-2">Henüz proje bulunamadı.</p>
+                    <button class="btn btn-primary btn-sm" onclick="syncProjects()"><i class="fas fa-sync"></i> Projeleri Tara</button>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    const tableHtml = projects.map(project => {
+        const statusInfo = getStatusInfo(project.status);
+        const projectTypeInfo = getProjectTypeInfo(project.type);
+        const isRunning = project.status === 'running';
+
+        return `
+            <tr class="${isRunning ? 'table-success' : ''}">
+                <td>
+                    <div class="d-flex align-items-center">
+                        <i class="${projectTypeInfo.icon} me-2"></i>
+                        <div>
+                            <strong>${project.name}</strong>
+                            <br>
+                            <small class="text-muted">${project.description || 'Açıklama yok'}</small>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <span class="badge bg-secondary">${projectTypeInfo.name}</span>
+                </td>
+                <td>
+                    <span class="badge bg-${statusInfo.class}">${statusInfo.text}</span>
+                </td>
+                <td>
+                    ${project.external_port ? `
+                        <span class="badge bg-info">${project.external_port}</span>
+                        ${isRunning ? `
+                            <a href="http://localhost:${project.external_port}" target="_blank" class="ms-2" title="Projeyi Aç">
+                                <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        ` : ''}
+                    ` : '<span class="text-muted">-</span>'}
+                </td>
+                <td class="project-actions">
+                    <div class="btn-group" role="group">
+                        ${isRunning ? `
+                            <button class="btn btn-warning btn-sm" onclick="stopProject(${project.id})" title="Durdur">
+                                <i class="fas fa-stop"></i>
+                            </button>
+                            <button class="btn btn-info btn-sm" onclick="restartProject(${project.id})" title="Yeniden Başlat">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        ` : `
+                            <button class="btn btn-success btn-sm" onclick="startProject(${project.id})" title="Başlat">
+                                <i class="fas fa-play"></i>
+                            </button>
+                        `}
+                        <button class="btn btn-primary btn-sm" onclick="deployProject(${project.id})" title="${isRunning ? 'Güncelle' : 'Deploy'}">
+                            <i class="fas fa-rocket"></i>
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="showLogs(${project.id})" title="Loglar">
+                            <i class="fas fa-terminal"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="showProjectSettings(${project.id})" title="Ayarlar">
+                            <i class="fas fa-cog"></i>
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteProject(${project.id})" title="Sil">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
         `;
     }).join('');
-    projectsContainer.innerHTML = projectHtml;
+    projectsTableBody.innerHTML = tableHtml;
+}
+
+function switchView(viewType) {
+    currentView = viewType;
+    
+    const cardViewBtn = document.getElementById('cardViewBtn');
+    const listViewBtn = document.getElementById('listViewBtn');
+    const cardView = document.getElementById('projectsContainer');
+    const listView = document.getElementById('projectsTable');
+    
+    if (viewType === 'card') {
+        cardViewBtn.classList.add('active');
+        listViewBtn.classList.remove('active');
+        cardView.classList.add('active');
+        listView.classList.remove('active');
+    } else {
+        listViewBtn.classList.add('active');
+        cardViewBtn.classList.remove('active');
+        listView.classList.add('active');
+        cardView.classList.remove('active');
+    }
+    
+    // Re-render projects in the new view
+    renderProjects(projects);
 }
 
 function getDeploymentStatusInfo(status) {
     switch (status) {
-        case 'success': return { text: 'Başarılı', class: 'success' };
+        case 'success': return { text: 'Başarılı', class: 'primary' };
         case 'failed': return { text: 'Başarısız', class: 'danger' };
         case 'building': return { text: 'Hazırlanıyor', class: 'info' };
         case 'pending': return { text: 'Beklemede', class: 'warning' };
@@ -254,18 +467,7 @@ function updateStats() {
     document.getElementById('usedPorts').textContent = usedPorts;
     
     // Load deployment stats
-    loadDeploymentStats();
-}
-
-async function loadDeploymentStats() {
-    try {
-        const data = await apiRequest('/api/deployments?limit=100');
-        if (data) {
-            document.getElementById('totalDeployments').textContent = data.length;
-        }
-    } catch (error) {
-        console.error('Load deployment stats error:', error);
-    }
+    // loadDeploymentStats(); // This function is removed, so this line is removed.
 }
 
 // Project actions
@@ -325,7 +527,6 @@ async function deployProject(projectId) {
         });
         
         if (data) {
-            showToast('Deployment başlatıldı. Loglar aşağıda gösteriliyor.', 'info');
             showBottomLogPanel(projectId);
             loadProjects();
         }
@@ -341,6 +542,32 @@ async function editPort(projectId) {
     showToast('Port ayarını bu menüden değiştirebilirsiniz.', 'info');
 }
 
+async function deleteProject(projectId) {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) {
+        showToast('Proje bulunamadı', 'error');
+        return;
+    }
+    
+    if (confirm(`"${project.name}" projesini silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`)) {
+        try {
+            const data = await apiRequest(`/api/projects/${projectId}`, {
+                method: 'DELETE'
+            });
+            
+            if (data && data.success) {
+                showToast('Proje başarıyla silindi', 'success');
+                loadProjects();
+            } else {
+                showToast(data?.error || 'Proje silinemedi', 'error');
+            }
+        } catch (error) {
+            console.error('Delete project error:', error);
+            showToast('Proje silme hatası', 'error');
+        }
+    }
+}
+
 // Settings modal fonksiyonları
 async function showProjectSettings(projectId) {
     try {
@@ -354,8 +581,9 @@ async function showProjectSettings(projectId) {
             
             // Status badge'ini güncelle
             const statusBadge = document.getElementById('settingsProjectStatus');
-            statusBadge.textContent = getStatusText(data.status);
-            statusBadge.className = `badge status-badge status-${data.status}`;
+            const statusInfo = getStatusInfo(data.status);
+            statusBadge.textContent = statusInfo.text;
+            statusBadge.className = `badge bg-${statusInfo.class}`;
             
             // Path göster
             document.getElementById('settingsProjectPath').textContent = data.path;
@@ -467,13 +695,15 @@ async function showProjectDetails(projectId) {
 function renderProjectModal(project) {
     document.getElementById('projectModalTitle').textContent = project.name;
     
+    const statusInfo = getStatusInfo(project.status);
+    
     const content = `
         <div class="project-info">
             <h6>Proje Bilgileri</h6>
             <div class="row">
                 <div class="col-md-6">
                     <p><strong>Tür:</strong> ${project.type}</p>
-                    <p><strong>Durum:</strong> <span class="badge status-${project.status}">${getStatusText(project.status)}</span></p>
+                    <p><strong>Durum:</strong> <span class="badge bg-${statusInfo.class}">${statusInfo.text}</span></p>
                     <p><strong>Port:</strong> ${project.external_port || 'Atanmamış'}</p>
                 </div>
                 <div class="col-md-6">
@@ -488,7 +718,24 @@ function renderProjectModal(project) {
         <div class="mb-3">
             <h6>İşlemler</h6>
             <div class="project-actions">
-                ${renderProjectActions(project)}
+                <button class="btn btn-primary btn-sm me-2" onclick="deployProject(${project.id})">
+                    <i class="fas fa-rocket"></i> Deploy
+                </button>
+                <button class="btn btn-success btn-sm me-2" onclick="startProject(${project.id})">
+                    <i class="fas fa-play"></i> Başlat
+                </button>
+                <button class="btn btn-warning btn-sm me-2" onclick="stopProject(${project.id})">
+                    <i class="fas fa-stop"></i> Durdur
+                </button>
+                <button class="btn btn-info btn-sm me-2" onclick="restartProject(${project.id})">
+                    <i class="fas fa-sync-alt"></i> Yeniden Başlat
+                </button>
+                <button class="btn btn-outline-secondary btn-sm me-2" onclick="showProjectSettings(${project.id})">
+                    <i class="fas fa-cog"></i> Ayarlar
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="deleteProject(${project.id})">
+                    <i class="fas fa-trash"></i> Sil
+                </button>
             </div>
         </div>
         
@@ -527,20 +774,23 @@ function renderDeploymentHistory(deployments) {
         return;
     }
     
-    const html = deployments.map(deployment => `
-        <div class="deployment-item ${deployment.status}">
-            <div class="d-flex justify-content-between">
-                <div>
-                    <strong>${getStatusText(deployment.status)}</strong>
-                    <small class="text-muted d-block">${formatDate(deployment.started_at)}</small>
+    const html = deployments.map(deployment => {
+        const statusInfo = getDeploymentStatusInfo(deployment.status);
+        return `
+            <div class="deployment-item ${deployment.status}">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <strong>${statusInfo.text}</strong>
+                        <small class="text-muted d-block">${formatDate(deployment.started_at)}</small>
+                    </div>
+                    <div>
+                        <span class="badge bg-secondary">#${deployment.id}</span>
+                    </div>
                 </div>
-                <div>
-                    <span class="badge bg-secondary">#${deployment.id}</span>
-                </div>
+                ${deployment.error_message ? `<div class="text-danger mt-2">${deployment.error_message}</div>` : ''}
             </div>
-            ${deployment.error_message ? `<div class="text-danger mt-2">${deployment.error_message}</div>` : ''}
-        </div>
-    `).join('');
+        `;
+    }).join('');
     
     container.innerHTML = html;
 }
@@ -621,59 +871,40 @@ async function clearLogs() {
 }
 
 // WebSocket functions
-function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}`;
-    
-    try {
-        ws = new WebSocket(wsUrl);
-        
-        ws.onopen = function() {
-            console.log('WebSocket connected');
-        };
-        
-        ws.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            
-            if (data.type === 'log') {
-                handleLogMessage(data);
-            }
-        };
-        
-        ws.onclose = function() {
-            console.log('WebSocket disconnected');
-            // Reconnect after 3 seconds
-            setTimeout(connectWebSocket, 3000);
-        };
-        
-        ws.onerror = function(error) {
-            console.error('WebSocket error:', error);
-        };
-    } catch (error) {
-        console.error('WebSocket connection error:', error);
-    }
-}
 
 // Bottom Log Panel Functions
 function showBottomLogPanel(projectId) {
     const project = projects.find(p => p.id == projectId);
     if (!project) return;
     
+    // Eski aboneliği iptal et
+    if (activeBottomLogProject && activeBottomLogProject !== projectId) {
+        unsubscribeFromProject();
+    }
+    
     activeBottomLogProject = projectId;
     bottomLogCount = 0;
     
     document.getElementById('logPanelTitle').textContent = `${project.name} - Canlı Loglar`;
     document.getElementById('logPanelCount').textContent = '0';
-    document.getElementById('bottomLogsContent').textContent = '';
+    document.getElementById('bottomLogsContent').innerHTML = '';
     
     const logPanel = document.getElementById('logPanel');
     logPanel.classList.add('expanded');
     
     const toggleIcon = document.getElementById('logPanelToggle');
     toggleIcon.className = 'fas fa-chevron-down';
+    
+    // WebSocket'e abone ol
+    subscribeToProject(projectId);
 }
 
 function hideBottomLogPanel() {
+    // Aboneliği iptal et
+    if (activeBottomLogProject) {
+        unsubscribeFromProject();
+    }
+    
     activeBottomLogProject = null;
     
     const logPanel = document.getElementById('logPanel');
@@ -700,26 +931,12 @@ function appendToBottomLogs(data) {
     const logsContent = document.getElementById('bottomLogsContent');
     const timestamp = new Date(data.timestamp).toLocaleTimeString('tr-TR');
     
-    // Color-coded log types
-    let coloredMessage = '';
-    switch(data.logType) {
-        case 'stdout':
-            coloredMessage = `\x1b[32m[${timestamp}] [${data.logType}] ${data.message}\x1b[0m`; // Green
-            break;
-        case 'stderr':
-            coloredMessage = `\x1b[31m[${timestamp}] [${data.logType}] ${data.message}\x1b[0m`; // Red
-            break;
-        case 'system':
-            coloredMessage = `\x1b[36m[${timestamp}] [${data.logType}] ${data.message}\x1b[0m`; // Cyan
-            break;
-        case 'build':
-            coloredMessage = `\x1b[33m[${timestamp}] [${data.logType}] ${data.message}\x1b[0m`; // Yellow
-            break;
-        default:
-            coloredMessage = `[${timestamp}] [${data.logType}] ${data.message}`;
-    }
+    // Renkli log mesajı oluştur
+    const logLine = document.createElement('div');
+    logLine.className = `log-${data.logType}`;
+    logLine.textContent = `[${timestamp}] [${data.logType}] ${data.message}`;
     
-    logsContent.textContent += (logsContent.textContent ? '\n' : '') + coloredMessage;
+    logsContent.appendChild(logLine);
     logsContent.scrollTop = logsContent.scrollHeight;
     
     bottomLogCount++;
@@ -729,12 +946,14 @@ function appendToBottomLogs(data) {
 function clearBottomLogs(event) {
     event.stopPropagation(); // Panel toggle'ı engellemek için
     
-    document.getElementById('bottomLogsContent').textContent = '';
+    document.getElementById('bottomLogsContent').innerHTML = '';
     bottomLogCount = 0;
     document.getElementById('logPanelCount').textContent = '0';
 }
 
 function handleLogMessage(data) {
+    console.log('📨 Log mesajı alındı:', data);
+    
     // If logs modal is open and matches current project, append log
     if (logsModal._isShown && currentProjectId == data.projectId) {
         const logsContent = document.getElementById('logsContent');
@@ -745,34 +964,48 @@ function handleLogMessage(data) {
         logsContent.scrollTop = logsContent.scrollHeight;
     }
     
-    // Auto-open browser when project starts successfully
-    if (data.logType === 'system' && data.message && data.message.includes('Proje başlatıldı:')) {
-        // Extract project info and auto-open browser
-        const project = projects.find(p => p.id == data.projectId);
-        if (project && project.external_port) {
-            const url = `http://localhost:${project.external_port}`;
+    // Auto-open browser when project starts successfully (only for manual start - not during deployment)
+    if (data.logType === 'system' && data.message && data.message.includes('Proje başlatıldı:') && activeBottomLogProject !== data.projectId) {
+        // Extract port from message: "Proje başlatıldı: cizelge_deneme (Port: 5000)"
+        const portMatch = data.message.match(/Port: (\d+)/);
+        if (portMatch) {
+            const port = portMatch[1];
+            const url = `http://localhost:${port}`;
             setTimeout(() => {
                 window.open(url, '_blank');
                 showToast(`🚀 Proje açıldı: ${url}`, 'success');
             }, 2000); // 2 saniye bekle ki proje tamamen başlasın
         }
-        
-        // Auto-show bottom log panel for this project
-        showBottomLogPanel(data.projectId);
+    }
+    
+    // Auto-open browser when deployment completes and project is accessible
+    if (data.logType === 'system' && data.message && data.message.includes('🚀 Proje erişilebilir:')) {
+        // Extract URL from message: "🚀 Proje erişilebilir: http://localhost:5000"
+        const urlMatch = data.message.match(/http:\/\/localhost:(\d+)/);
+        if (urlMatch) {
+            const url = urlMatch[0];
+            setTimeout(() => {
+                window.open(url, '_blank');
+                showToast(`🌐 Proje tarayıcıda açıldı: ${url}`, 'success');
+            }, 1000); // 1 saniye bekle
+        }
     }
     
     if (data.logType === 'system' && data.message) {
         if (data.message.includes('✅ Deployment')) {
             showToast(data.message, 'success');
-            setTimeout(() => hideBottomLogPanel(), 3000);
+            setTimeout(() => hideBottomLogPanel(), 5000);
         } else if (data.message.includes('❌ Deployment')) {
             showToast(data.message, 'error');
             setTimeout(() => hideBottomLogPanel(), 5000); // Hata mesajını okumak için daha uzun süre
+        } else if (data.message.includes('🚀 Proje erişilebilir:')) {
+            showToast(data.message, 'success');
         }
     }
     
     // Handle bottom log panel updates
     if (activeBottomLogProject == data.projectId) {
+        console.log('➡️ Bottom log panel için mesaj:', data.message);
         appendToBottomLogs(data);
         
         // Hide panel if project stopped or errored
@@ -782,6 +1015,12 @@ function handleLogMessage(data) {
                 hideBottomLogPanel();
             }, 3000); // 3 saniye sonra gizle
         }
+    } else {
+        console.log('⚠️ Bottom log panel aktif değil veya farklı proje:', {
+            activeBottomLogProject,
+            dataProjectId: data.projectId,
+            message: data.message
+        });
     }
     
     // Update project status if needed
@@ -1009,6 +1248,21 @@ async function handleUploadProject(e) {
     }
 }
 
+// Make functions globally accessible
+window.switchView = switchView;
+window.syncProjects = syncProjects;
+window.deployProject = deployProject;
+window.startProject = startProject;
+window.stopProject = stopProject;
+window.restartProject = restartProject;
+window.showLogs = showProjectLogs;
+window.showProjectLogs = showProjectLogs;
+window.openProjectSettings = showProjectSettings;
+window.showProjectSettings = showProjectSettings;
+window.deleteProject = deleteProject;
+window.showProjectDetails = showProjectDetails;
+window.editPort = editPort;
+
 // Auto refresh
 setInterval(() => {
     loadProjects();
@@ -1017,8 +1271,10 @@ setInterval(() => {
 async function loadDashboardStats() {
     try {
         const projects = await apiRequest('/api/projects');
-        document.getElementById('totalProjects').textContent = projects.length;
-        document.getElementById('runningProjects').textContent = projects.filter(p => p.status === 'running').length;
+        if (projects) {
+            document.getElementById('totalProjects').textContent = projects.length;
+            document.getElementById('runningProjects').textContent = projects.filter(p => p.status === 'running').length;
+        }
     } catch (error) {
         console.error('Dashboard stats error:', error);
     }

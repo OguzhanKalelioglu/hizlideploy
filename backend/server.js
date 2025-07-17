@@ -22,17 +22,23 @@ app.use('/api/logs', require('./routes/logs'));
 
 // WebSocket bağlantıları (real-time logs için)
 wss.on('connection', (ws) => {
-  console.log('WebSocket bağlantısı kuruldu');
+  console.log('📡 WebSocket bağlantısı kuruldu');
   
   ws.on('message', (message) => {
-    const data = JSON.parse(message);
-    if (data.type === 'subscribe_logs') {
-      ws.projectId = data.projectId;
+    try {
+      const data = JSON.parse(message);
+      console.log('📨 WebSocket mesajı alındı:', data);
+      if (data.type === 'subscribe_logs') {
+        ws.projectId = data.projectId;
+        console.log(`✅ Client proje ${data.projectId} loglarına abone oldu`);
+      }
+    } catch (error) {
+      console.error('❌ WebSocket mesajı parse hatası:', error);
     }
   });
   
   ws.on('close', () => {
-    console.log('WebSocket bağlantısı kapandı');
+    console.log('🔌 WebSocket bağlantısı kapandı');
   });
 });
 

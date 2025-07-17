@@ -152,7 +152,7 @@ class DeploymentEngine {
         // Python projeleri için platform'a göre pip komutunu ayarla
         if (project.type === 'python-flask' || project.type === 'python-django') {
           if (this.platform.name === 'Windows') {
-            buildCommand = buildCommand.replace('pip install', 'pip install');
+            buildCommand = `chcp 65001 && ${buildCommand}`;
           } else {
             buildCommand = buildCommand.replace('pip install', 'pip3 install');
           }
@@ -170,6 +170,9 @@ class DeploymentEngine {
       // Deployment'ı tamamla
       await this.updateDeploymentStatus(deploymentId, 'success');
       this.broadcastLog(projectId, 'system', `✅ Deployment #${deploymentId} başarıyla tamamlandı.`);
+      
+      // Proje URL'sini bildirin
+      this.broadcastLog(projectId, 'system', `🚀 Proje erişilebilir: http://localhost:${port.external_port}`);
 
       console.log(`Deployment tamamlandı: ${project.name} (Port: ${port.external_port})`);
     } catch (error) {
@@ -190,17 +193,22 @@ class DeploymentEngine {
       
       const buildProcess = spawn(shell, shellArgs, {
         cwd: project.path,
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: true,
+        env: {
+          ...process.env,
+          PYTHONIOENCODING: 'utf-8'
+        }
       });
 
       buildProcess.stdout.on('data', (data) => {
         logStream.write(data);
-        this.broadcastLog(project.id, 'build', data.toString());
+        this.broadcastLog(project.id, 'build', data.toString('utf8'));
       });
 
       buildProcess.stderr.on('data', (data) => {
         logStream.write(data);
-        this.broadcastLog(project.id, 'build-error', data.toString());
+        this.broadcastLog(project.id, 'build-error', data.toString('utf8'));
       });
 
       buildProcess.on('close', (code) => {
@@ -262,7 +270,11 @@ class DeploymentEngine {
           startCommand = `PORT=${ports.port} ${startCommand}`;
         }
       } else if (project.type === 'python-flask') {
-        startCommand = `${this.platform.python} app.py`;
+        if (this.platform.name === 'Windows') {
+          startCommand = `chcp 65001 && ${this.platform.python} -m flask run --host=127.0.0.1 --port=${ports.port}`;
+        } else {
+          startCommand = `${this.platform.python} -m flask run --host=127.0.0.1 --port=${ports.port}`;
+        }
       } else if (project.type === 'python-django') {
         startCommand = `${this.platform.python} manage.py runserver 0.0.0.0:${ports.port}`;
       } else if (project.type === 'static') {
@@ -278,14 +290,27 @@ class DeploymentEngine {
       const shell = this.platform.shell;
       const shellArgs = [...this.platform.shellArgs, startCommand];
       
+      console.log(`🚀 Flask start command: ${shell} ${shellArgs.join(' ')}`);
+      console.log(`📍 Working directory: ${project.path}`);
+      console.log(`🌐 Port: ${ports.port}`);
+      console.log(`🔧 Environment PORT: ${process.env.PORT}`);
+      console.log(`🔧 Environment FLASK_RUN_HOST: ${process.env.FLASK_RUN_HOST}`);
+      
       const childProcess = spawn(shell, shellArgs, {
         cwd: project.path,
         stdio: ['pipe', 'pipe', 'pipe'],
+        shell: true,
+        windowsVerbatimArguments: true,
         env: {
           ...process.env,
-          PORT: ports.port,
+          PORT: String(ports.port),
+          FLASK_RUN_PORT: String(ports.port),
+          FLASK_RUN_HOST: '127.0.0.1',
+          FLASK_APP: 'app.py',
           NODE_ENV: 'production',
-          FLASK_ENV: 'production'
+          FLASK_ENV: 'development',
+          PYTHONIOENCODING: 'utf-8',
+          PYTHONUNBUFFERED: '1'
         }
       });
 
@@ -303,12 +328,12 @@ class DeploymentEngine {
       // Process output'larını dinle
       childProcess.stdout.on('data', (data) => {
         logStream.write(data);
-        this.broadcastLog(projectId, 'stdout', data.toString());
+        this.broadcastLog(projectId, 'stdout', data.toString('utf8'));
       });
 
       childProcess.stderr.on('data', (data) => {
         logStream.write(data);
-        this.broadcastLog(projectId, 'stderr', data.toString());
+        this.broadcastLog(projectId, 'stderr', data.toString('utf8'));
       });
 
       childProcess.on('close', async (code) => {
@@ -347,6 +372,8 @@ class DeploymentEngine {
       await this.updateProjectStatus(projectId, 'running');
 
       console.log(`Proje başlatıldı: ${project.name} (PID: ${childProcess.pid})`);
+      this.broadcastLog(projectId, 'system', `Proje başlatıldı: ${project.name} (Port: ${ports.port})`);
+      
       return childProcess.pid;
     } catch (error) {
       console.error('Proje başlatma hatası:', error);
@@ -495,18 +522,31 @@ class DeploymentEngine {
 
   // Log'u WebSocket ile broadcast et
   broadcastLog(projectId, type, message) {
+    console.log(`📡 Broadcasting log: [${type}] ${message} (Project: ${projectId})`);
+    
     if (global.wss) {
+      let clientCount = 0;
+      let subscribedClients = 0;
+      
       global.wss.clients.forEach(client => {
-        if (client.readyState === 1 && client.projectId === projectId) {
-          client.send(JSON.stringify({
+        clientCount++;
+        if (client.readyState === 1 && client.projectId == projectId) {
+          subscribedClients++;
+          const logData = {
             type: 'log',
             projectId,
             logType: type,
             message,
             timestamp: Date.now()
-          }));
+          };
+          client.send(JSON.stringify(logData));
+          console.log(`✅ Log gönderildi client'a:`, logData);
         }
       });
+      
+      console.log(`📊 WebSocket stats: ${clientCount} client, ${subscribedClients} subscribed to project ${projectId}`);
+    } else {
+      console.log('❌ Global WebSocket server bulunamadı');
     }
 
     // Veritabanına da kaydet
