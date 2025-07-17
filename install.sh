@@ -7,15 +7,18 @@ set -e
 
 echo '
   ______  __  __  ______  ______        ______  ______  ______  ______  __      __  ______  __  __  ______    
- /      \/  \/  \/      \/      \      /      \/      \/      \/      \/  \    /  \/      \/  \/  \/      \   
-/$$$$$$  $$  $$ /$$$$$$  $$$$$$  |    /$$$$$$  $$$$$$  $$$$$$  $$$$$$  $$  \  /$$ /$$$$$$  $$  $$ /$$$$$$  |  
-$$ |  $$ $$ $$ $$ | _$$/$$ |  $$ |    $$ | _$$/$$ |  $$ $$ | _$$/$$ |  $$ $$  \/$$/$$ | _$$/$$ $$ $$ | _$$/   
-$$ |  $$ $$ $$ $$ |/    $$ |  $$ |    $$ |/    $$ |  $$ $$ |/    $$ |  $$ $$$  $$$ $$ |/    $$ $$ $$ |/       
-$$ |  $$ $$ $$ $$ |     $$ |  $$ |    $$ |     $$ |  $$ $$ |     $$ |  $$ $$$$$$$$ $$ |     $$ $$ $$ |        
-$$ \__$$ $$_$$ $$ |_____$$ \__$$ |    $$ |_____$$ \__$$ $$ |_____$$ \__$$ $$ |$$/$$ $$ |_____$$_$$ $$ |_____   
-$$    $$/  $$$ $$       $$    $$/     $$       $$    $$/$$       $$    $$/$$ |  $$/$$       $$ $$$ $$       |  
- $$$$$$/$$$$/   $$$$$$$/ $$$$$$/       $$$$$$$/ $$$$$$/  $$$$$$$/ $$$$$$/ $$/   $$/  $$$$$$$/$$$$/   $$$$$$/   
+ ________  ___  ____   ________  _______    
+|_   __  ||_  ||_  _| |_   __  ||_   __ \   
+  | |_ \_|  | |_/ /     | |_ \_|  | |__) |  
+  |  _| _   |  __'.     |  _| _   |  __ /   
+ _| |__/ | _| |  \ \_  _| |__/ | _| |  \ \_ 
+|________||____||____||________||____| |___|
+  ______  __  __  ______  ______        ______  ______  ______  ______  __      __  ______  __  __  ______    
 '
+echo "================================================="
+echo " Eker Deploy Server Kurulum Scripti v1.1"
+echo "================================================="
+sleep 2
 
 echo "Eker Deploy Server kurulumu başlıyor..."
 
@@ -30,10 +33,17 @@ echo "Temel paketler kuruluyor..."
 apt-get update -y
 apt-get install -y curl wget git nginx sqlite3 software-properties-common
 
-# Node.js kur
-echo "Node.js kuruluyor..."
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt-get install -y nodejs
+# Node.js'i NVM kullanarak kur
+echo "Node.js (NVM ile) kuruluyor..."
+export NVM_DIR="/root/.nvm"
+# NVM'yi indirip kur
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+# NVM'yi aktif et
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+# Node.js 22'yi kur ve varsayılan yap
+nvm install 22
+nvm use 22
+nvm alias default 22
 
 # PM2 kur
 echo "⚙️ PM2 kuruluyor..."
@@ -89,8 +99,8 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/eker-deploy-server
-ExecStart=/bin/bash -c 'cd /opt/eker-deploy-server && npx pm2 start backend/server.js --name eker-deploy-server --no-daemon'
-ExecStop=/bin/bash -c 'npx pm2 stop eker-deploy-server'
+ExecStart=/bin/bash -c 'export NVM_DIR="/root/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && cd /opt/eker-deploy-server && npx pm2 start backend/server.js --name eker-deploy-server --no-daemon'
+ExecStop=/bin/bash -c 'export NVM_DIR="/root/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && npx pm2 stop eker-deploy-server'
 Restart=always
 RestartSec=10
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

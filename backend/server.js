@@ -68,8 +68,8 @@ app.use((err, req, res, next) => {
 
 // Sunucuyu başlat
 const PORT = config.server.port;
-server.listen(PORT, async () => {
-  console.log(`Sunucu ${PORT} portunda çalışıyor`);
+server.listen(PORT, '0.0.0.0', async () => {
+  console.log(`Sunucu ${PORT} portunda tüm arayüzlerde (0.0.0.0) çalışıyor`);
   console.log(`Web arayüzü: http://localhost:${PORT}`);
   
   // Veritabanını initialize et
