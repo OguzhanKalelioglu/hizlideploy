@@ -1,4 +1,4 @@
-# HızlıDeploy - Deployment Platformu
+# Eker Deploy Server - Deployment Platformu
 
 Bu proje, Ubuntu Server üzerinde çalışan ve yerel projeleri hızlıca deploy etmek için kullanılan bir deployment platformudur.
 
@@ -15,7 +15,7 @@ Bu proje, Ubuntu Server üzerinde çalışan ve yerel projeleri hızlıca deploy
 
 ## Kurulum
 
-### ��� Hızlı Kurulum (Önerilen)
+### 🚀 Hızlı Kurulum (Önerilen)
 
 #### Ubuntu/Linux Server
 ```bash
@@ -30,7 +30,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/OguzhanKalelioglu/hizlideploy/main/scripts/install.ps1'))
 ```
 
-### ��� Manuel Kurulum
+### 🛠️ Manuel Kurulum
 
 ```bash
 # Repo klonla
@@ -47,7 +47,7 @@ npm run setup
 npm start
 ```
 
-### ��� Kurulum Sonrası
+### ⚙️ Kurulum Sonrası
 
 Kurulum tamamlandıktan sonra:
 
@@ -69,7 +69,7 @@ Kurulum tamamlandıktan sonra:
 
 ⚠️ **Güvenlik için admin şifresini değiştirmeyi unutmayın!**
 
-## ��� Güncelleme
+## 🔄 Güncelleme
 
 ### Ubuntu/Linux
 ```bash
@@ -83,7 +83,7 @@ curl https://raw.githubusercontent.com/OguzhanKalelioglu/hizlideploy/main/script
 iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/OguzhanKalelioglu/hizlideploy/main/scripts/update.ps1'))
 ```
 
-## ���️ Kaldırma
+## 🗑️ Kaldırma
 
 ### Ubuntu/Linux
 ```bash
@@ -94,12 +94,12 @@ curl https://raw.githubusercontent.com/OguzhanKalelioglu/hizlideploy/main/script
 ### Windows
 ```powershell
 # Manual kaldırma
-# 1. PM2 servisi durdur: pm2 stop hizlideploy
-# 2. Kurulum dizinini sil: Remove-Item -Path "$env:USERPROFILE\hizlideploy" -Recurse -Force
+# 1. PM2 servisi durdur: pm2 stop eker-deploy-server
+# 2. Kurulum dizinini sil: Remove-Item -Path "$env:USERPROFILE\eker-deploy-server" -Recurse -Force
 # 3. PM2 global paket kaldır: npm uninstall -g pm2
 ```
 
-## ��� Yönetim Komutları
+## 🖥️ Yönetim Komutları
 
 ### Ubuntu/Linux
 ```bash
@@ -107,7 +107,7 @@ curl https://raw.githubusercontent.com/OguzhanKalelioglu/hizlideploy/main/script
 pm2 status
 
 # Servisi yeniden başlat
-pm2 restart hizlideploy
+pm2 restart eker-deploy-server
 
 # Logları görüntüle
 pm2 logs
@@ -131,7 +131,7 @@ status.bat      # Durum kontrol
 # PM2 komutları
 pm2 status      # Durum
 pm2 logs        # Loglar
-pm2 restart hizlideploy  # Yeniden başlat
+pm2 restart eker-deploy-server  # Yeniden başlat
 ```
 
 ## Kullanım
@@ -158,12 +158,12 @@ pm2 restart hizlideploy  # Yeniden başlat
 npm run dev
 ```
 
-## ��� GitHub Repository
+## 📄 GitHub Repository
 
 - **Repository:** https://github.com/OguzhanKalelioglu/hizlideploy
 - **Raw Scripts:** https://raw.githubusercontent.com/OguzhanKalelioglu/hizlideploy/main/scripts/
 
-## ��� Destek
+## 💬 Destek
 
 Sorunlar için GitHub Issues kullanın:
 https://github.com/OguzhanKalelioglu/hizlideploy/issues
